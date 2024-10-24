@@ -560,7 +560,11 @@ exports.LoadUtils = () => {
         return contacts.map(contact => window.WWebJS.getContactModel(contact));
     };
 
-    window.WWebJS.mediaInfoToFile = ({ data, mimetype, filename }) => {
+    window.WWebJS.mediaInfoToFile = ({ data, mimetype, filename, inputId }) => {
+        if (inputId) {
+            return document.getElementById(inputId).files[0];
+        }
+
         const binaryData = window.atob(data);
 
         const buffer = new ArrayBuffer(binaryData.length);

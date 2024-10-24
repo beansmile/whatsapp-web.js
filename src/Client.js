@@ -15,7 +15,7 @@ const { LoadUtils } = require('./util/Injected/Utils');
 const ChatFactory = require('./factories/ChatFactory');
 const ContactFactory = require('./factories/ContactFactory');
 const WebCacheFactory = require('./webCache/WebCacheFactory');
-const { ClientInfo, Message, MessageMedia, Contact, Location, Poll, PollVote, GroupNotification, Label, Call, Buttons, List, Reaction, Broadcast} = require('./structures');
+const { ClientInfo, Message, MessageMedia, Contact, Location, Poll, PollVote, GroupNotification, Label, Call, Buttons, List, Reaction, Broadcast, File} = require('./structures');
 const NoAuth = require('./authStrategies/NoAuth');
 const {exposeFunctionIfAbsent} = require('./util/Puppeteer');
 
@@ -859,7 +859,7 @@ class Client extends EventEmitter {
     /**
      * Send a message to a specific chatId
      * @param {string} chatId
-     * @param {string|MessageMedia|Location|Poll|Contact|Array<Contact>|Buttons|List} content
+     * @param {string|MessageMedia|Location|Poll|Contact|Array<Contact>|Buttons|List|File} content
      * @param {MessageSendOptions} [options] - Options used when sending the message
      * 
      * @returns {Promise<Message>} Message that was just sent
@@ -892,11 +892,11 @@ class Client extends EventEmitter {
 
         const sendSeen = typeof options.sendSeen === 'undefined' ? true : options.sendSeen;
 
-        if (content instanceof MessageMedia) {
+        if (content instanceof MessageMedia || content instanceof File) {
             internalOptions.attachment = content;
             internalOptions.isViewOnce = options.isViewOnce,
             content = '';
-        } else if (options.media instanceof MessageMedia) {
+        } else if (options.media instanceof MessageMedia || options.media instanceof File) {
             internalOptions.attachment = options.media;
             internalOptions.caption = content;
             internalOptions.isViewOnce = options.isViewOnce,
@@ -947,7 +947,44 @@ class Client extends EventEmitter {
 
         return new Message(this, newMessage);
     }
-    
+
+    /**
+     * Send a message to a specific chatId
+     * @param {string} chatId
+     * @param {string} path - Path to the file to be sent
+     * @param {MessageSendOptions} [options] - Options used when sending the message
+     *
+     * @returns {Promise<Message>} Message that was just sent
+     */
+    async sendAttachmentMessage(chatId, path, options = {}) {
+        const getFileType = (mimetype) => {
+            if (mimetype.startsWith('image/')) return 'image';
+            if (mimetype.startsWith('video/')) return 'video';
+            if (mimetype.startsWith('audio/')) return 'audio';
+            return 'document';
+        };
+        // TODO: 不知道具体值，先估计一下
+        const maxFileSizeMap = {
+            image: 1024 * 1024 * 5,
+            video: 1024 * 1024 * 30, // 这个应该是32MB
+            audio: 1024 * 1024 * 10,
+            document: 1024 * 1024 * 2000,
+        };
+        let file;
+        try {
+            file = new File(this, path);
+            await file.create();
+            const fileType = getFileType(file.mimetype);
+            const msg = await this.sendMessage(chatId, file, {
+                sendMediaAsDocument: fileType === 'document' || file.filesize >= maxFileSizeMap[fileType] || undefined,
+                ...options,
+            });
+            return msg;
+        } finally {
+            await file?.remove();
+        }
+    }
+
     /**
      * Searches for messages
      * @param {string} query
