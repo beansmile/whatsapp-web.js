@@ -65,7 +65,10 @@ declare namespace WAWebJS {
 
         /** Get all current contact instances */
         getContacts(): Promise<Contact[]>
-        
+
+        /** Get all current contact instances and save to file */
+        getContactsAndSave(options: { downloadPath: string }): Promise<string>
+
         /** Get the country code of a WhatsApp ID. (154185968@c.us) => (1) */
         getCountryCode(number: string): Promise<string>
 
@@ -1449,6 +1452,8 @@ declare namespace WAWebJS {
         delete: () => Promise<boolean>,
         /** Loads chat messages, sorted from earliest to latest. */
         fetchMessages: (searchOptions: MessageSearchOptions) => Promise<Message[]>,
+        /** Fetch messages and save to a file */
+        fetchMessagesAndSave: (options: MessageSearchOptions & { downloadPath: string }) => Promise<string>,
         /** Mutes this chat forever, unless a date is specified */
         mute: (unmuteDate?: Date) => Promise<void>,
         /** Send a message to this chat */

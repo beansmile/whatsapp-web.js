@@ -3,6 +3,7 @@
 const EventEmitter = require('events');
 const puppeteer = require('puppeteer');
 const moduleRaid = require('@pedroslopez/moduleraid/moduleraid');
+const path = require('path');
 
 const Util = require('./util/Util');
 const InterfaceController = require('./util/InterfaceController');
@@ -1038,6 +1039,36 @@ class Client extends EventEmitter {
         });
 
         return contacts.map(contact => ContactFactory.create(this, contact));
+    }
+
+    /**
+     * Get all current contact instances and save to file
+     * @param {Object} options
+     * @param {string} options.downloadPath - Directory to save the contacts
+     * @returns {Promise<string>} File name of the saved contacts
+     */
+    async getContactsAndSave(options) {
+        const cdpSessionClient = await this.pupPage.target().createCDPSession();
+        try {
+            await cdpSessionClient.send('Page.setDownloadBehavior', {
+                behavior: 'allow',
+                downloadPath: options.downloadPath,
+            });
+            const contactFileName = await this.pupPage.evaluate(() => {
+                const contacts = window.WWebJS.getContacts();
+                const blob = new Blob([JSON.stringify(contacts)], { type: 'application/json' });
+                // 创建下载链接并触发下载
+                const fileName = 'contacts.json';
+                window.WWebJS.triggerDownloadBlob(blob, fileName);
+                return fileName;
+            }, options);
+
+            const fullPath = path.join(options.downloadPath, contactFileName);
+            await Util.waitBrowserDownloadComplete(fullPath);
+            return fullPath;
+        } finally {
+            await cdpSessionClient.detach();
+        }
     }
 
     /**
