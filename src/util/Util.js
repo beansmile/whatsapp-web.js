@@ -184,7 +184,7 @@ class Util {
 
     static waitBrowserDownloadComplete(filePath, options = {}) {
         return new Promise((resolve) => {
-            const { timeout = 5 * 1000, interval = 500 } = options;
+            const { timeout = 1 * 60 * 1000, interval = 500 } = options;
             const startTime = Date.now();
 
             const checkFile = async () => {
