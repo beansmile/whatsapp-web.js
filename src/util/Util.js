@@ -181,6 +181,36 @@ class Util {
     static setFfmpegPath(path) {
         ffmpeg.setFfmpegPath(path);
     }
+
+    static waitBrowserDownloadComplete(filePath, options = {}) {
+        return new Promise((resolve) => {
+            const { timeout = 5 * 1000, interval = 500 } = options;
+            const startTime = Date.now();
+
+            const checkFile = async () => {
+                try {
+                    const stats = await fs.stat(filePath);
+                    const fileName = path.basename(filePath);
+                    if (stats.size > 0 && !fileName.endsWith('.crdownload')) {
+                        return resolve(true);
+                    }
+                } catch (err) {
+                    // 文件可能还不存在，继续等待
+                }
+
+                // 检查是否超时
+                if (Date.now() - startTime > timeout) {
+                    return resolve(false);
+                }
+
+                // 使用 setTimeout 代替 while 循环
+                setTimeout(checkFile, interval);
+            };
+
+            // 开始检查
+            checkFile();
+        });
+    }
 }
 
 module.exports = Util;

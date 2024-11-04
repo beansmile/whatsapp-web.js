@@ -2,6 +2,8 @@
 
 const Base = require('./Base');
 const Message = require('./Message');
+const path = require('path');
+const Util = require('../util/Util');
 
 /**
  * Represents a Chat on WhatsApp
@@ -202,7 +204,7 @@ class Chat extends Base {
                     if (!loadedMessages || !loadedMessages.length) break;
                     msgs = [...loadedMessages.filter(msgFilter), ...msgs];
                 }
-                
+
                 if (msgs.length > searchOptions.limit) {
                     msgs.sort((a, b) => (a.t > b.t) ? 1 : -1);
                     msgs = msgs.splice(msgs.length - searchOptions.limit);
@@ -214,6 +216,67 @@ class Chat extends Base {
         }, this.id._serialized, searchOptions);
 
         return messages.map(m => new Message(this.client, m));
+    }
+
+    /**
+     * Loads chat messages, sorted from earliest to latest.
+     * @param {Object} options Options for searching messages. Right now only limit and fromMe is supported.
+     * @param {Number} [options.limit] The amount of messages to return. If no limit is specified, the available messages will be returned. Note that the actual number of returned messages may be smaller if there aren't enough messages in the conversation. Set this to Infinity to load all messages.
+     * @param {Boolean} [options.fromMe] Return only messages from the bot number or vise versa. To get all messages, leave the option undefined.
+     * @param {string} options.downloadPath - Directory to save the messages
+     * @returns {Promise<string>} File name of the saved messages
+     */
+    async fetchMessagesAndSave(options) {
+        const cdpSessionClient = await this.client?.pupPage.target().createCDPSession();
+        try {
+            await cdpSessionClient.send('Page.setDownloadBehavior', {
+                behavior: 'allow',
+                downloadPath: options.downloadPath,
+            });
+
+            const messageFileName = await this.client.pupPage.evaluate(async (chatId, options) => {
+                const msgFilter = (m) => {
+                    if (m.isNotification) {
+                        return false; // dont include notification messages
+                    }
+                    if (options && options.fromMe !== undefined && m.id.fromMe !== options.fromMe) {
+                        return false;
+                    }
+                    return true;
+                };
+
+                const chat = window.Store.Chat.get(chatId);
+                let msgs = chat.msgs.getModelsArray().filter(msgFilter);
+
+                if (options && options.limit > 0) {
+                    while (msgs.length < options.limit) {
+                        const loadedMessages = await window.Store.ConversationMsgs.loadEarlierMsgs(chat);
+                        if (!loadedMessages || !loadedMessages.length) break;
+                        msgs = [...loadedMessages.filter(msgFilter), ...msgs];
+                    }
+
+                    if (msgs.length > options.limit) {
+                        msgs.sort((a, b) => (a.t > b.t) ? 1 : -1);
+                        msgs = msgs.splice(msgs.length - options.limit);
+                    }
+                }
+
+                const messages = msgs.map(m => window.WWebJS.getMessageModel(m));
+
+                const blob = new Blob([JSON.stringify(messages)], { type: 'application/json' });
+                // 创建下载链接并触发下载
+                const fileName = `${chatId}.json`;
+                window.WWebJS.triggerDownloadBlob(blob, `${chatId}.json`);
+
+                return fileName;
+            }, this.id._serialized, options);
+
+            const fullPath = path.join(options.downloadPath, messageFileName);
+            await Util.waitBrowserDownloadComplete(fullPath);
+            return fullPath;
+        } finally {
+            await cdpSessionClient.detach();
+        }
     }
 
     /**
